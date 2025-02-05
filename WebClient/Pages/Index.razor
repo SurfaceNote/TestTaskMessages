@@ -1,0 +1,84 @@
+﻿@page "/"
+@using System
+@using WebClient.Data
+@using System.Net.Http
+@using System.Net.Http.Json
+
+<PageTitle>Отправить сообщение</PageTitle>
+
+<h1>Отправить сообщение</h1>
+
+<EditForm Model="@message" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div>
+        <label for="text">Текст:</label>
+        <InputText id="text" @bind-Value="message.Text" />
+    </div>
+
+    <div>
+        <label for="sequenceNumber">Порядковый номер:</label>
+        <InputNumber id="sequenceNumber" @bind-Value="message.SequenceNumber" />
+    </div>
+
+    <div>
+        <label for="increaseSequence">Увеличивать автоматически порядковый номер?:</label>
+        <InputCheckbox id="increaseSequence" @bind-Value="increaseSequence" />
+    </div>
+
+    <button type="submit">Отправить</button>
+</EditForm>
+<br />
+<br />
+<p>Отправленное сообщение:</p>
+<p><strong>Текст:</strong> @submittedMessage?.Text</p>
+<p><strong>Порядковый номер:</strong> @submittedMessage?.SequenceNumber</p>
+
+
+@code {
+    private Message message = new Message();
+    private bool increaseSequence;
+    private Message? submittedMessage;
+
+    [Inject] private HttpClient Http { get; set; }
+
+    private async Task HandleValidSubmit()
+    {
+        var originalSequenceNumber = message.SequenceNumber;
+
+        var messageToSend = new
+        {
+            text = message.Text,
+            sequenceNumber = originalSequenceNumber
+        };
+
+        var response = await Http.PostAsJsonAsync("http://host.docker.internal:5000/api/messages", messageToSend);
+
+        if (response.IsSuccessStatusCode)
+        {
+            submittedMessage = new Message
+            {
+                Text = message.Text,
+                SequenceNumber = originalSequenceNumber
+            };
+            
+            message = new Message();
+            
+            // Если установлен чекбокс, увеличиваем значение SequenceNumber для формы
+            if (increaseSequence)
+            {
+                message.SequenceNumber = originalSequenceNumber+1;
+            }
+            else 
+            {
+                message.SequenceNumber = originalSequenceNumber;
+            }
+        }
+        else
+        {
+            // Обработка ошибки
+            Console.WriteLine("Ошибка: " + response.StatusCode);
+        }
+    }
+}

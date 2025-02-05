@@ -1,0 +1,115 @@
+﻿@page "/websocketMessages"
+@using System.Net.WebSockets
+@using Microsoft.JSInterop
+@using System.Text.Json
+@using WebClient.Data
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Сообщения по вебсокету</PageTitle>
+
+<h1>Сообщения по вебсокету</h1>
+
+<div id="messages"_blank>
+    @foreach (var message in messages)
+    {
+        <p>@message</p>
+    }
+</div>
+
+<script>
+    window.connectWebSocket = (url, dotNetHelper) => {
+
+        /* 
+        Не получилось при смене вкладки отключить вебсокет.
+        Как временное решение: при возвращении на вкладку,
+        отключать прошлое соединение, чтобы сделать новое.
+        Иначе каждый раз будут создаваться новые подключения
+        TODO: доделать отключение при смене вкладки
+        */
+        if (window.webSocketInstance) {
+            console.log("Переподключаем WebSocket")
+            disconnectWebSocket();
+        }
+
+        console.log("Подключаем WebSocket");
+        window.webSocketInstance = new WebSocket(url);
+
+        window.webSocketInstance.onmessage = (event) => {
+            console.log("Получил сообщение:", event.data);
+            dotNetHelper.invokeMethodAsync('OnMessage', event.data);
+        };
+
+        window.webSocketInstance.onopen = () => console.log("WebSocket подключен");
+        window.webSocketInstance.onerror = (error) => console.log("WebSocket ошибка:", error);
+    };
+
+    window.disconnectWebSocket = () => {
+        if (window.webSocketInstance) {
+            console.log("Закрываем WebSocket");
+            window.webSocketInstance.close();
+            window.webSocketInstance = null;
+        }
+    };
+</script>
+
+@code {
+    private List<string> messages = new List<string>();
+    private WebSocket? socket;
+    private DotNetObjectReference<WebsocketMessages>? dotNetHelper;
+    private string webSocketUrl = "ws://localhost:5000/ws";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            dotNetHelper = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("connectWebSocket", webSocketUrl, dotNetHelper);
+        }
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+    }
+
+    [JSInvokable]
+    public void OnMessage(string message)
+    {
+        InvokeAsync(() =>
+        {
+            // Десериализация строки JSON в объект
+            var messageObject = JsonSerializer.Deserialize<Message>(message);
+
+            if (messageObject != null)
+            {
+                messages.Add($"{messageObject.Timestamp:HH:mm:ss.fff} ({messageObject.SequenceNumber}): {messageObject.Text}");
+                StateHasChanged();
+            }
+            StateHasChanged();
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (dotNetHelper != null)
+        {
+            await JSRuntime.InvokeVoidAsync("disconnectWebSocket");
+            dotNetHelper.Dispose();
+        }
+    }
+
+    public class WebSocket
+    {
+        private readonly string _url;
+        private readonly IJSRuntime _jsRuntime;
+
+        public event EventHandler<string>? OnMessage;
+
+        public WebSocket(string url, IJSRuntime jsRuntime)
+        {
+            _url = url;
+            _jsRuntime = jsRuntime;
+        }
+    }
+
+    
+}

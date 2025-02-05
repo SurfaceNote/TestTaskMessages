@@ -1,0 +1,60 @@
+﻿@page "/messages"
+@using System.Net.Http
+@using System.Net.Http.Json
+@using WebClient.Data
+@inject HttpClient Http
+
+<PageTitle>История сообщений</PageTitle>
+
+<h1>История сообщений</h1>
+
+<p>За какое количество минут надо отобразить сообщения?</p>
+
+<InputNumber @bind-Value="minutes" />
+<button @onclick="FetchMessages">Загрузить сообщения</button>
+
+@if (messages == null)
+{
+    <p><em>Загрузка...</em></p>
+}
+else if (!messages.Any())
+{
+    <p>За данный диапазон нет сообщений.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Время</th>
+                <th>Порядковый номер</th>
+                <th>Текст</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var message in messages)
+            {
+                <tr>
+                    <td>@message.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td>@message.SequenceNumber</td>
+                    <td>@message.Text</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Message> messages;
+    private int minutes = 10; // Значение по умолчанию
+
+    private async Task FetchMessages()
+    {
+        messages = await Http.GetFromJsonAsync<List<Message>>($"http://host.docker.internal:5000/api/messages?minutes={minutes}");
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await FetchMessages();
+    }
+}
